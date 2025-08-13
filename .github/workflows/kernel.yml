@@ -28,8 +28,9 @@ jobs:
 
       - name: Debug generated matrix JSON
         run: |
-          echo 'Matrix JSON output:'
-          echo "${{ steps.generate-matrix.outputs.CONFIGS }}" | jq
+          echo "Matrix JSON output:"
+          echo '${{ steps.generate-matrix.outputs.CONFIGS }}' | jq .
+    
 
       - name: ⏰ Set builddate
         id: generate-builddate
