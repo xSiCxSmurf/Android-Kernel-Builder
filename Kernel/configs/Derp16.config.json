@@ -1,51 +1,58 @@
-[
-  {
-    "kernelSource": {
-      "name": "meteoric kernel (ppanzenboeck fork)",
-      "repo": "https://github.com/ppanzenboeck/kernel_oneplus_sm8250-meteoric.git",
-      "branch": "derp16-kebab-ksu-n-susfs",
-      "device": "kebab",
-      "defconfig": "vendor/kebab_defconfig"
-    },
-    "toolchains": [
-      {
-        "name": "Proton Clang",
-        "repo": "https://github.com/kdrag0n/proton-clang.git",
-        "branch": "master",
-        "binaryEnv": [
-          "CC=clang",
-          "LLVM=1",
-          "LLVM_IAS=1"
-        ]
-      },
-      {
-        "name": "GCC ARM64",
-        "url": "https://github.com/arter97/arm64-gcc.git",
-        "binaryEnv": [
-          "CROSS_COMPILE=aarch64-linux-gnu-"
-        ]
-      }
-    ],
-    "enableCcache": true,
-    "params": {
-      "ARCH": "arm64",
-      "CC": "clang",
-      "externalCommands": {
-        "CROSS_COMPILE": "aarch64-linux-gnu-",
-        "CROSS_COMPILE_ARM32": "arm-linux-gnueabi-",
-        "CROSS_COMPILE_COMPAT": "",
-        "CLANG_TRIPLE": "aarch64-linux-gnu-"
-      }
-    },
-    "AnyKernel3": {
-      "use": true,
-      "release": true,
-      "custom": {
-        "repo": "https://github.com/osm0sis/AnyKernel3.git",
-        "branch": "master"
-      }
-    },
-    "enableKernelSU": true,
-    "enableLXC": true
-  }
-]
+jobs:
+  Build-Kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          repository: ppanzenboeck/kernel_oneplus_sm8250-meteoric
+          ref: derp16-kebab-ksu-n-susfs
+
+      - name: Setup Toolchains
+        run: |
+          git clone --depth 1 https://github.com/kdrag0n/proton-clang.git $HOME/proton-clang
+          git clone --depth 1 https://github.com/arter97/arm64-gcc.git $HOME/arm64-gcc
+          export PATH=$HOME/proton-clang/bin:$HOME/arm64-gcc/bin:$PATH
+          export CC=clang
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+
+      - name: Install Prerequisites
+        run: sudo apt-get update && sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev ccache lzop curl zip unzip jq
+
+      - name: Enable ccache
+        if: ${{ env.ENABLE_CCACHE && env.ENABLE_CCACHE == 'true' }}
+        run: |
+          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> $GITHUB_ENV
+          export PATH="/usr/lib/ccache:$PATH"
+
+      - name: Build Kernel
+        run: |
+          make ARCH=arm64 vendor/kebab_defconfig
+          make -j$(nproc) ARCH=arm64 O=out
+
+      - name: Clone AnyKernel3
+        run: git clone --depth 1 https://github.com/osm0sis/AnyKernel3.git anykernel
+
+      - name: Prepare AnyKernel3 Package
+        run: |
+          cp out/arch/arm64/boot/Image anykernel/
+          # Add copying dtb/dtbo if needed here
+
+      - name: Package AnyKernel3 zip
+        run: |
+          cd anykernel
+          zip -r ../AnyKernel3-kebab.zip *
+
+      - name: Upload Kernel Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Image
+          path: out/arch/arm64/boot/Image
+
+      - name: Upload AnyKernel3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyKernel3-kebab
+          path: AnyKernel3-kebab.zip
