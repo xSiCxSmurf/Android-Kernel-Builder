@@ -105,5 +105,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: "${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-Image"
-          path: kernel_source/${{ env
+          path: kernel_source/${{ env }}
           
