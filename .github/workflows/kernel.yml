@@ -24,6 +24,10 @@ jobs:
           configs=$(jq -c -s '[.[][]]' Kernel/configs/*.config.json)
           echo "CONFIGS=$configs" >> "$GITHUB_OUTPUT"
 
+      - name: Debug generated matrix JSON
+  run: echo "${{ steps.generate-matrix.outputs.CONFIGS }}"
+  
+
       - name: ⏰ Set builddate
         id: generate-builddate
         run: echo "BUILDDATE=$(date +'%Y%m%d')" >> "$GITHUB_OUTPUT"
@@ -50,4 +54,6 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt-get update
-          
+      - name: List kernel build output files
+  run: ls -lR "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/"
+  
