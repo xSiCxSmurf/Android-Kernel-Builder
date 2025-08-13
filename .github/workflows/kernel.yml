@@ -21,7 +21,7 @@ jobs:
       - name: 😆 Generate Matrix
         id: generate-matrix
         run: |
-          configs=$(jq -c -s '[.[][]]' Kernel/configs/*.config.json)
+          configs=$(jq -c -s 'add' Kernel/configs/*.config.json)
           echo "CONFIGS=$configs" >> "$GITHUB_OUTPUT"
 
       - name: Debug generated matrix JSON
@@ -43,12 +43,15 @@ jobs:
     env:
       BUILD_DATE: "${{ needs.Read-configuration.outputs.BUILD_DATE }}"
       KERNEL_NAME: "${{ matrix.CONFIG.kernelSource.name }}"
-      ARCH: "${{ matrix.CONFIG.arch }}"
+      ARCH: "${{ matrix.CONFIG.params.ARCH }}"
       OUT_DIR: out
-      ENABLE_CCACHE: "${{ matrix.CONFIG.enableCache }}"
+      ENABLE_CCACHE: "${{ matrix.CONFIG.enableCcache }}"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout Kernel Source
+        run: |
+          git clone --depth 1 -b "${{ matrix.CONFIG.kernelSource.branch }}" \
+            "${{ matrix.CONFIG.kernelSource.repo }}" kernel_source
+          cd kernel_source
 
       - name: Install prerequisites
         run: |
@@ -70,20 +73,37 @@ jobs:
           key: ccache-${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}
           restore-keys: ccache-${{ env.KERNEL_NAME }}-
 
-      - name: Build Kernel
+      - name: Setup toolchains
         run: |
-          make ARCH=${{ env.ARCH }} O=${{ env.OUT_DIR }} ${{ matrix.CONFIG.defconfig }}
+          for toolchain in $(seq 0 $((${#matrix.CONFIG.toolchains[@]} - 1))); do
+            name=$(echo '${{ toJSON(matrix.CONFIG.toolchains) }}' | jq -r ".[$toolchain].name")
+            repo=$(echo '${{ toJSON(matrix.CONFIG.toolchains) }}' | jq -r ".[$toolchain].repo // .[$toolchain].url")
+            branch=$(echo '${{ toJSON(matrix.CONFIG.toolchains) }}' | jq -r ".[$toolchain].branch // empty")
+            dest="$HOME/toolchain-$toolchain"
+            if [ -n "$branch" ] && [ "$branch" != "null" ]; then
+              git clone --depth 1 -b "$branch" "$repo" "$dest"
+            else
+              git clone --depth 1 "$repo" "$dest"
+            fi
+            export PATH="$dest/bin:$PATH"
+          done
+          printenv
+
+      - name: Build Kernel
+        working-directory: kernel_source
+        run: |
+          make ARCH=${{ env.ARCH }} O=${{ env.OUT_DIR }} ${{ matrix.CONFIG.kernelSource.defconfig }}
           make -j$(nproc) ARCH=${{ env.ARCH }} O=${{ env.OUT_DIR }}
 
       - name: List kernel build output files
-        run: ls -lR "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/"
+        run: ls -lR kernel_source/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/
 
       - name: 💛 Upload Image
         uses: actions/upload-artifact@v4
         with:
           name: "${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-Image"
-          path: "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image"
-          if-no-files-found: ignore
+          path: kernel_source/${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image
+          if-no-files-found: error
           retention-days: 7
 
   Release:
@@ -96,7 +116,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed to generate changelog
+          fetch-depth: 0
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
