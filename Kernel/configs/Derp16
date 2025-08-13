@@ -1,0 +1,51 @@
+[
+  {
+    "kernelSource": {
+      "name": "meteoric kernel (ppanzenboeck fork)",
+      "repo": "https://github.com/ppanzenboeck/kernel_oneplus_sm8250-meteoric.git",
+      "branch": "Derp16-kebab-ksu-n-susfs",
+      "device": "kebab",
+      "defconfig": "vendor/kebab_defconfig"
+    },
+    "toolchains": [
+      {
+        "name": "Proton Clang",
+        "repo": "https://github.com/kdrag0n/proton-clang.git",
+        "branch": "master",
+        "binaryEnv": [
+          "CC=clang",
+          "LLVM=1",
+          "LLVM_IAS=1"
+        ]
+      },
+      {
+        "name": "GCC ARM64",
+        "url": "https://github.com/arter97/arm64-gcc.git",
+        "binaryEnv": [
+          "CROSS_COMPILE=aarch64-linux-gnu-"
+        ]
+      }
+    ],
+    "enableCcache": true,
+    "params": {
+      "ARCH": "arm64",
+      "CC": "clang",
+      "externalCommands": {
+        "CROSS_COMPILE": "aarch64-linux-gnu-",
+        "CROSS_COMPILE_ARM32": "arm-linux-gnueabi-",
+        "CROSS_COMPILE_COMPAT": "",
+        "CLANG_TRIPLE": "aarch64-linux-gnu-"
+      }
+    },
+    "AnyKernel3": {
+      "use": true,
+      "release": true,
+      "custom": {
+        "repo": "https://github.com/osm0sis/AnyKernel3.git",
+        "branch": "master"
+      }
+    },
+    "enableKernelSU": true,
+    "enableLXC": false
+  }
+]
