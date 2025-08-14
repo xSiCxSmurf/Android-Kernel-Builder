@@ -1,0 +1,89 @@
+name: Kernel Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      compiler:
+        description: 'Toolchain to use (proton / neutron)'
+        required: true
+        default: 'proton'
+      compiler_cleanup:
+        description: 'Cleanup toolchain before build (true/false)'
+        required: true
+        default: 'true'
+      include_ksu:
+        description: 'Include KernelSU (true/false)'
+        required: true
+        default: 'false'
+      clean_build:
+        description: 'Clean build before compiling (true/false)'
+        required: true
+        default: 'false'
+      cleanup_zips:
+        description: 'Cleanup old zips before packaging (true/false)'
+        required: true
+        default: 'true'
+      version:
+        description: 'Kernel version tag'
+        required: true
+        default: 'v1.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl zip unzip wget tar perl python3 clang lld libssl-dev
+
+      - name: Load config
+        run: |
+          CONFIG_FILE=".config.json"
+          if [ -f "$CONFIG_FILE" ]; then
+            echo "Loading config from $CONFIG_FILE"
+            cat "$CONFIG_FILE"
+            COMPILER=$(jq -r '.COMPILER' $CONFIG_FILE)
+            COMPILER_CLEANUP=$(jq -r '.COMPILER_CLEANUP' $CONFIG_FILE)
+            INCLUDE_KSU=$(jq -r '.INCLUDE_KSU' $CONFIG_FILE)
+            CLEAN_BUILD=$(jq -r '.CLEAN_BUILD' $CONFIG_FILE)
+            CLEANUP=$(jq -r '.CLEANUP' $CONFIG_FILE)
+            VERSION=$(jq -r '.VERSION' $CONFIG_FILE)
+            DEFCONFIG=$(jq -r '.DEFCONFIG' $CONFIG_FILE)
+            ANYKERNEL3_DIR=$(jq -r '.ANYKERNEL3_DIR' $CONFIG_FILE)
+            RELEASE_REPO=$(jq -r '.RELEASE_REPO' $CONFIG_FILE)
+            IMAGE=$(jq -r '.IMAGE' $CONFIG_FILE)
+            DTBO=$(jq -r '.DTBO' $CONFIG_FILE)
+            DTB=$(jq -r '.DTB' $CONFIG_FILE)
+          else
+            echo "No .config.json found, using workflow_dispatch inputs"
+            COMPILER="${{ github.event.inputs.compiler }}"
+            COMPILER_CLEANUP="${{ github.event.inputs.compiler_cleanup }}"
+            INCLUDE_KSU="${{ github.event.inputs.include_ksu }}"
+            CLEAN_BUILD="${{ github.event.inputs.clean_build }}"
+            CLEANUP="${{ github.event.inputs.cleanup_zips }}"
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+
+      - name: Run Build Script
+        run: |
+          chmod +x build.sh
+          ./build.sh \
+            --compiler "$COMPILER" \
+            --compiler-cleanup "$COMPILER_CLEANUP" \
+            --include-ksu "$INCLUDE_KSU" \
+            --clean-build "$CLEAN_BUILD" \
+            --cleanup "$CLEANUP" \
+            --version "$VERSION"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build
+          path: out/*.zip
+          
