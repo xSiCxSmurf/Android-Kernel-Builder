@@ -1,0 +1,15 @@
+{
+  "COMPILER": "proton",
+  "COMPILER_CLEANUP": true,
+  "INCLUDE_KSU": false,
+  "CLEAN_BUILD": false,
+  "CLEANUP": true,
+  "VERSION": "v1.0",
+  "DEFCONFIG": "vendor/kebab_defconfig",
+  "ANYKERNEL3_DIR": "anykernel3",
+  "RELEASE_REPO": "username/kernel-repo",
+  "IMAGE": "out/arch/arm64/boot/Image.gz-dtb",
+  "DTBO": "out/arch/arm64/boot/dtbo.img",
+  "DTB": "out/arch/arm64/boot/dtb",
+  "VERBOSE": 0
+}
