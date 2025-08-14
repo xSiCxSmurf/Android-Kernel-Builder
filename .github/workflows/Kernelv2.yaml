@@ -1,128 +1,54 @@
-name: Kernel Build
+name: Android Kernel Build
 
 on:
   workflow_dispatch:
-    inputs:
-      compiler:
-        description: 'Toolchain to use (proton / neutron)'
-        required: false
-        default: ''
-      compiler_cleanup:
-        description: 'Cleanup toolchain before build (true/false)'
-        required: false
-        default: ''
-      include_ksu:
-        description: 'Include KernelSU (true/false)'
-        required: false
-        default: ''
-      clean_build:
-        description: 'Clean build before compiling (true/false)'
-        required: false
-        default: ''
-      cleanup_zips:
-        description: 'Cleanup old zips before packaging (true/false)'
-        required: false
-        default: ''
-      version:
-        description: 'Kernel version tag'
-        required: false
-        default: ''
-      defconfig:
-        description: 'Kernel defconfig file'
-        required: false
-        default: ''
-      anykernel3_dir:
-        description: 'Path to AnyKernel3 directory'
-        required: false
-        default: ''
-      release_repo:
-        description: 'GitHub repo for release (user/repo)'
-        required: false
-        default: ''
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          repository: YourUsername/kernel_oneplus_sm8250
+          ref: meteoric
+          path: kernel_source
 
-      - name: Install Build Dependencies
+      - name: Set up Clang Toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git curl zip unzip wget tar perl python3 clang lld libssl-dev jq
+          mkdir -p toolchain
+          cd toolchain
+          wget https://github.com/ClangBuiltLinux/android-prebuilts-clang/releases/download/clang-r522817/clang-r522817.tar.gz
+          tar -xzf clang-r522817.tar.gz
+          rm clang-r522817.tar.gz
+          echo "TOOLCHAIN=$(pwd)/clang-r522817/bin" >> $GITHUB_ENV
 
-      - name: Load Config
-        id: load_config
+      - name: Clone KernelSU
         run: |
-          CONFIG_FILE=".config.json"
-          if [ -f "$CONFIG_FILE" ]; then
-            echo "Using .config.json values..."
-            cat "$CONFIG_FILE"
-            COMPILER=$(jq -r '.COMPILER' $CONFIG_FILE)
-            COMPILER_CLEANUP=$(jq -r '.COMPILER_CLEANUP' $CONFIG_FILE)
-            INCLUDE_KSU=$(jq -r '.INCLUDE_KSU' $CONFIG_FILE)
-            CLEAN_BUILD=$(jq -r '.CLEAN_BUILD' $CONFIG_FILE)
-            CLEANUP=$(jq -r '.CLEANUP' $CONFIG_FILE)
-            VERSION=$(jq -r '.VERSION' $CONFIG_FILE)
-            DEFCONFIG=$(jq -r '.DEFCONFIG' $CONFIG_FILE)
-            ANYKERNEL3_DIR=$(jq -r '.ANYKERNEL3_DIR' $CONFIG_FILE)
-            RELEASE_REPO=$(jq -r '.RELEASE_REPO' $CONFIG_FILE)
-          else
-            echo "Using workflow_dispatch inputs..."
-            COMPILER="${{ github.event.inputs.compiler }}"
-            COMPILER_CLEANUP="${{ github.event.inputs.compiler_cleanup }}"
-            INCLUDE_KSU="${{ github.event.inputs.include_ksu }}"
-            CLEAN_BUILD="${{ github.event.inputs.clean_build }}"
-            CLEANUP="${{ github.event.inputs.cleanup_zips }}"
-            VERSION="${{ github.event.inputs.version }}"
-            DEFCONFIG="${{ github.event.inputs.defconfig }}"
-            ANYKERNEL3_DIR="${{ github.event.inputs.anykernel3_dir }}"
-            RELEASE_REPO="${{ github.event.inputs.release_repo }}"
-          fi
-          echo "compiler=$COMPILER" >> $GITHUB_OUTPUT
-          echo "compiler_cleanup=$COMPILER_CLEANUP" >> $GITHUB_OUTPUT
-          echo "include_ksu=$INCLUDE_KSU" >> $GITHUB_OUTPUT
-          echo "clean_build=$CLEAN_BUILD" >> $GITHUB_OUTPUT
-          echo "cleanup=$CLEANUP" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "defconfig=$DEFCONFIG" >> $GITHUB_OUTPUT
-          echo "anykernel3_dir=$ANYKERNEL3_DIR" >> $GITHUB_OUTPUT
-          echo "release_repo=$RELEASE_REPO" >> $GITHUB_OUTPUT
+          cd kernel_source
+          echo "📥 Fetching KernelSU..."
+          rm -rf drivers/kernelsu
+          git clone --depth=1 https://github.com/tiann/KernelSU.git drivers/kernelsu
+          echo "✅ KernelSU cloned into drivers/kernelsu"
 
-      - name: Run Build
+      - name: Build Kernel
         run: |
-          chmod +x build.sh
-          ./build.sh \
-            --compiler "${{ steps.load_config.outputs.compiler }}" \
-            --compiler-cleanup "${{ steps.load_config.outputs.compiler_cleanup }}" \
-            --include-ksu "${{ steps.load_config.outputs.include_ksu }}" \
-            --clean-build "${{ steps.load_config.outputs.clean_build }}" \
-            --cleanup "${{ steps.load_config.outputs.cleanup }}" \
-            --version "${{ steps.load_config.outputs.version }}" \
-            --defconfig "${{ steps.load_config.outputs.defconfig }}" \
-            --anykernel3-dir "${{ steps.load_config.outputs.anykernel3_dir }}" \
-            --release-repo "${{ steps.load_config.outputs.release_repo }}"
+          cd kernel_source
+          export PATH=$TOOLCHAIN:$PATH
+          make ARCH=arm64 O=out vendor/meteoric_defconfig
+          make -j$(nproc) ARCH=arm64 O=out \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
 
-      - name: Upload Kernel Zip
+      - name: Upload Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-build
-          path: out/*.zip
-
-      - name: Publish GitHub Release
-        if: steps.load_config.outputs.release_repo != ''
-        run: |
-          echo "Publishing GitHub Release..."
-          LATEST_ZIP=$(ls out/*.zip | tail -n 1)
-          gh release create "${{ steps.load_config.outputs.version }}" "$LATEST_ZIP" \
-            --repo "${{ steps.load_config.outputs.release_repo }}" \
-            --title "Meteoric-${{ steps.load_config.outputs.version }}" || \
-          gh release upload "${{ steps.load_config.outputs.version }}" "$LATEST_ZIP" \
-            --repo "${{ steps.load_config.outputs.release_repo }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: Image
+          path: kernel_source/out/arch/arm64/boot/Image
           
